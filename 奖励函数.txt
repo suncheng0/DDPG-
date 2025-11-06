@@ -1,0 +1,49 @@
+DDPG
+function reward = improvedRewardFunction(Vout, I1_inst, I2_inst, I1_dc, I2_dc, phase_diff)
+    % 目标参数
+    V_ref = 12;               % 目标电压
+    I_dc_target = 83.3;       % 目标电流
+    phase_target = -180;      % 目标相位
+    
+    % 安全约束（优先判断）
+    if Vout > 15 || Vout < 5  
+        reward = -1500; return; % 直接返回大惩罚
+    end
+    if I1_dc > 100 || I2_dc > 100  % 1.2 * 83.3≈100
+        reward = -1000; return;
+    end
+    
+    % ---- 核心修改：简化奖励结构，移除归一化 ----
+    % 电压奖励（连续奖励）
+    volt_error = abs(Vout - V_ref);
+    R_volt = -10 * volt_error;  % 线性惩罚
+    
+    % 电流跟踪奖励
+    curr_error = (abs(I1_dc - I_dc_target) + abs(I2_dc - I_dc_target))/2;
+    R_curr = -5 * curr_error;
+    
+    % 均流奖励（两相电流差异）
+    balance_error = abs(I1_dc - I2_dc);
+    R_balance = -3 * balance_error;
+    
+    % 相位奖励
+    phase_error = abs(phase_diff - phase_target);
+    R_phase = -2 * phase_error;
+    
+    % ---- 目标区域奖励（阶梯式）----
+    if volt_error < 0.05
+        R_target_volt = 100;
+    elseif volt_error < 0.1
+        R_target_volt = 50;
+    elseif volt_error < 0.5
+        R_target_volt = 20;
+    else
+        R_target_volt = 0;
+    end
+    
+    % 总奖励（不再归一化！）
+    reward = R_volt + R_curr + R_balance + R_phase + R_target_volt;
+    
+    % 限制合理范围即可
+    reward = max(min(reward, 200), -200);
+end
